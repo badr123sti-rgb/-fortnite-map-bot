@@ -1,32 +1,33 @@
 /**
- * FORTNITE MAP TRACKER v6.0 - LIGHTWEIGHT
- * - بدون متصفح (توفير رام 100%)
- * - رسالة واحدة متجددة
- * - زر تحديث يدوي
- * - منشن @everyone عند وصول 10 لاعبين
+ * FORTNITE MAP TRACKER v7.0 - ULTIMATE
+ * - تجاوز حماية 403 (Enhanced Headers)
+ * - رسالة واحدة متجددة (Message Edit)
+ * - زر تحديث يدوي (Refresh Button)
+ * - منشن @everyone عند 10 لاعبين
+ * - أوامر Slash كاملة
  */
 
 require('dotenv').config();
 const { 
     Client, GatewayIntentBits, EmbedBuilder, ActivityType, REST, Routes, 
-    SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle 
+    SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField 
 } = require('discord.js');
 
 const cron = require('node-cron');
 const cheerio = require('cheerio');
 const axios = require('axios');
 
-// --- الإعدادات ---
+// --- الإعدادات من Variables ---
 const CONFIG = {
     token: process.env.DISCORD_TOKEN,
     clientId: process.env.CLIENT_ID,
     channelId: process.env.CHANNEL_ID,
     updateInterval: parseInt(process.env.UPDATE_INTERVAL) || 1,
-    mapUrl: process.env.MAP_URL || null,
+    mapUrl: process.env.MAP_URL || 'https://fortnite.gg/island/2650-2440-2051',
     maxPlayers: 40
 };
 
-// --- الحالة ---
+// --- حالة البوت ---
 const state = {
     statusMessageId: null,
     didMentionEveryone: false,
@@ -35,15 +36,24 @@ const state = {
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
 
-// --- وظيفة سحب البيانات (خفيفة جداً) ---
+// --- دالة سحب البيانات المتطورة (لحل خطأ 403) ---
 async function scrapeData(url) {
     try {
         const response = await axios.get(url, {
             headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept-Language': 'en-US,en;q=0.9'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                'Sec-Ch-Ua-Mobile': '?0',
+                'Sec-Ch-Ua-Platform': '"Windows"',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1'
             },
-            timeout: 10000
+            timeout: 15000
         });
         
         const $ = cheerio.load(response.data);
@@ -65,12 +75,13 @@ async function scrapeData(url) {
     }
 }
 
-// --- تحديث الرسالة ---
+// --- تحديث الرسالة الثابتة ---
 async function updateStatus(isManual = false) {
     if (!CONFIG.mapUrl) return;
     try {
         const channel = await client.channels.fetch(CONFIG.channelId);
         const count = await scrapeData(CONFIG.mapUrl);
+        
         if (count === null) return;
 
         const embed = new EmbedBuilder()
@@ -102,44 +113,55 @@ async function updateStatus(isManual = false) {
             }
         }
 
-        // منشن عند وصول 10 لاعبين
+        // منشن @everyone عند وصول 10 لاعبين
         if (count >= 10 && !state.didMentionEveryone) {
-            await channel.send(`📢 @everyone الجزيرة بدأت تمتلئ! العدد الحالي: **${count}**`);
+            await channel.send(`📢 @everyone الجزيرة اشتعلت! 🔥 العدد الحالي: **${count}**`);
             state.didMentionEveryone = true;
         } else if (count < 10) {
             state.didMentionEveryone = false;
         }
 
-        client.user.setActivity(`${count}/${CONFIG.maxPlayers} لاعب`, { type: ActivityType.Watching });
+        client.user.setActivity(`${count} لاعب | ${state.mapInfo.name}`, { type: ActivityType.Watching });
     } catch (e) {
-        console.error("❌ خطأ في التحديث:", e.message);
+        console.error("❌ خطأ التحديث:", e.message);
     }
 }
 
-// --- التشغيل ---
+// --- عند جاهزية البوت ---
 client.once('ready', async () => {
-    console.log(`🟢 البوت يعمل بنجاح باسم: ${client.user.tag}`);
+    console.log(`🟢 ${client.user.tag} متصل وجاهز!`);
     
-    // تسجيل أمر /setmap
+    // تسجيل الأوامر (Slash Commands)
+    const commands = [
+        new SlashCommandBuilder()
+            .setName('setmap')
+            .setDescription('تغيير رابط الماب المراقب')
+            .addStringOption(o => o.setName('url').setRequired(true).setDescription('رابط fortnite.gg'))
+    ];
+
     const rest = new REST({ version: '10' }).setToken(CONFIG.token);
-    await rest.put(Routes.applicationCommands(CONFIG.clientId), { body: [
-        new SlashCommandBuilder().setName('setmap').setDescription('تغيير رابط الماب').addStringOption(o => o.setName('url').setRequired(true).setDescription('رابط fortnite.gg'))
-    ]});
+    try {
+        await rest.put(Routes.applicationCommands(CONFIG.clientId), { body: commands });
+    } catch (e) { console.error("❌ فشل تسجيل الأوامر:", e); }
 
     await updateStatus();
     cron.schedule(`*/${CONFIG.updateInterval} * * * *`, () => updateStatus());
 });
 
-// --- التفاعل ---
+// --- التفاعلات (أزرار وأوامر) ---
 client.on('interactionCreate', async (int) => {
     if (int.isChatInputCommand() && int.commandName === 'setmap') {
+        if (!int.member.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
+            return int.reply({ content: "❌ ليس لديك صلاحية!", ephemeral: true });
+        }
         CONFIG.mapUrl = int.options.getString('url');
         state.didMentionEveryone = false;
-        await int.reply({ content: '✅ تم تحديث الرابط!', ephemeral: true });
+        await int.reply({ content: '✅ تم تحديث الرابط بنجاح!', ephemeral: true });
         updateStatus();
     }
+    
     if (int.isButton() && int.customId === 'refresh_stats') {
-        await int.reply({ content: '⏳ جاري التحديث...', ephemeral: true });
+        await int.reply({ content: '⏳ جاري جلب البيانات...', ephemeral: true });
         await updateStatus(true);
     }
 });
