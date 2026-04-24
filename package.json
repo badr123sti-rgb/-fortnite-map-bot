@@ -1,6 +1,6 @@
 {
   "name": "fortnite-bot",
-  "version": "6.0.0",
+  "version": "13.0.0",
   "main": "index.js",
   "engines": {
     "node": "20.x"
@@ -8,9 +8,8 @@
   "dependencies": {
     "discord.js": "^14.14.1",
     "dotenv": "^16.3.1",
-    "node-cron": "^3.0.3",
     "axios": "^1.6.0",
-    "cheerio": "^1.0.0-rc.12"
+    "node-cron": "^3.0.3"
   },
   "scripts": {
     "start": "node index.js"
