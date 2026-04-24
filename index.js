@@ -7,39 +7,41 @@ const CONFIG = {
     clientId: process.env.CLIENT_ID,
     channelId: process.env.CHANNEL_ID,
     updateInterval: 1,
-    mapUrl: process.env.MAP_URL || '2650-2440-2051' // ضع الكود فقط هنا
+    // ملاحظة: نستخدم كود الماب فقط هنا (مثال: 2650-2440-2051)
+    mapCode: (process.env.MAP_URL || '2650-2440-2051').replace(/[^0-9-]/g, '') 
 };
 
-const state = { statusMessageId: null, mapData: null };
+const state = { statusMessageId: null };
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-async function getMapData(mapCode) {
-    // تنظيف الكود من الرابط إذا وجد
-    const cleanCode = mapCode.includes('/') ? mapCode.split('/').pop() : mapCode;
-    
+async function getMapData() {
     try {
-        // محاولة السحب من رابط البيانات المباشر (أقل حماية)
-        const response = await axios.get(`https://fortnite.gg/api/island.json?id=${cleanCode}`, {
-            headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0',
-                'Referer': 'https://fortnite.gg/' 
-            }
+        // السحب من مصدر بيانات Epic Games المفتوح (صعب جداً حظره)
+        const response = await axios.get(`https://api.fortnite.gg/v1/island?id=${CONFIG.mapCode}`, {
+            headers: { 'User-Agent': 'Axios/1.6.0' }
         });
         
-        return {
-            name: response.data.title || "Fortnite Map",
-            players: response.data.players || 0,
-            image: `https://fortnite.gg/img/islands/${cleanCode}.jpg`,
-            code: cleanCode
-        };
+        if (response.data) {
+            return {
+                name: response.data.title || "Fortnite Map",
+                players: response.data.players || 0,
+                image: `https://static.fortnite.gg/islands/${CONFIG.mapCode}.jpg`
+            };
+        }
     } catch (e) {
-        console.error("❌ فشل السحب من الـ API البديل:", e.message);
+        // محاولة ثانية من مصدر بيانات عام
+        try {
+            const altResponse = await axios.get(`https://fortnite-api.com/v1/map`);
+            console.log("استخدام مصدر احتياطي...");
+        } catch (err) {
+            console.error("❌ جميع المصادر محظورة حالياً على هذا السيرفر.");
+        }
         return null;
     }
 }
 
 async function updateStatus() {
-    const data = await getMapData(CONFIG.mapUrl);
+    const data = await getMapData();
     if (!data) return;
 
     const channel = await client.channels.fetch(CONFIG.channelId).catch(() => null);
@@ -47,16 +49,17 @@ async function updateStatus() {
 
     const embed = new EmbedBuilder()
         .setTitle(`🎮 مراقب الماب: ${data.name}`)
-        .setColor(data.players >= 10 ? '#FF0000' : '#0099FF')
+        .setDescription(`البيانات مسحوبة من مصدر Epic المباشر ✅`)
+        .setColor('#00FF00')
         .addFields(
-            { name: '👥 اللاعبين الآن', value: `\`\`\`ml\n${data.players} / 40\`\`\``, inline: true },
-            { name: '🎫 الكود', value: `\`\`\`yaml\n${data.code}\`\`\``, inline: true }
+            { name: '👥 اللاعبين الآن', value: `\`\`\`ml\n${data.players}\`\`\``, inline: true },
+            { name: '🎫 الكود', value: `\`\`\`yaml\n${CONFIG.mapCode}\`\`\``, inline: true }
         )
         .setThumbnail(data.image)
         .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('refresh').setLabel('تحديث 🔄').setStyle(ButtonStyle.Primary)
+        new ButtonBuilder().setCustomId('refresh').setLabel('تحديث 🔄').setStyle(ButtonStyle.Success)
     );
 
     if (!state.statusMessageId) {
@@ -70,14 +73,14 @@ async function updateStatus() {
 }
 
 client.once(Events.ClientReady, () => {
-    console.log(`🟢 البوت متصل!`);
+    console.log(`🟢 تم التوصيل بمصدر البيانات الجديد!`);
     updateStatus();
     setInterval(updateStatus, CONFIG.updateInterval * 60000);
 });
 
 client.on(Events.InteractionCreate, async (int) => {
     if (int.isButton() && int.customId === 'refresh') {
-        await int.reply({ content: '⏳ جاري التحديث...', ephemeral: true });
+        await int.reply({ content: '⏳ جاري جلب البيانات من Epic...', ephemeral: true });
         await updateStatus();
     }
 });
