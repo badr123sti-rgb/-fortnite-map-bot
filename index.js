@@ -1,10 +1,5 @@
 require('dotenv').config();
-const { 
-    Client, GatewayIntentBits, EmbedBuilder, ActivityType, REST, Routes, 
-    SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField,
-    Events 
-} = require('discord.js');
-
+const { Client, GatewayIntentBits, EmbedBuilder, ActivityType, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, Events } = require('discord.js');
 const cron = require('node-cron');
 const cheerio = require('cheerio');
 const axios = require('axios');
@@ -18,32 +13,26 @@ const CONFIG = {
     maxPlayers: 40
 };
 
-const state = {
-    statusMessageId: null,
-    didMentionEveryone: false,
-    mapInfo: { name: "جاري السحب...", imageUrl: null, code: null }
-};
-
+const state = { statusMessageId: null, didMentionEveryone: false, mapInfo: { name: "جاري السحب...", imageUrl: null, code: null } };
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
 
 async function scrapeData(url) {
     if (!url || !url.startsWith('http')) return null;
     try {
-        // استخدام محاكي متصفح iPhone لتخطي حماية 403
-        const response = await axios.get(url, {
+        // محاولة استخدام وكيل مختلف وتغيير الرابط قليلاً لتضليل الحماية
+        const response = await axios.get(`${url}?refresh=${Math.random()}`, {
             headers: { 
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Referer': 'https://www.google.com/'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
+                'Sec-Fetch-Mode': 'navigate',
+                'X-Requested-With': 'XMLHttpRequest'
             },
-            timeout: 15000
+            timeout: 10000
         });
         
         const $ = cheerio.load(response.data);
-        const pageText = $('body').text();
-        const match = pageText.match(/(\d[\d,]*)\s*players?\s*online/i);
-        const playerCount = match ? parseInt(match[1].replace(/,/g, '')) : 0;
+        const playerCount = parseInt($('.island-players').text().replace(/,/g, '')) || 0;
 
         state.mapInfo = {
             name: $('h1').first().text().trim() || "Fortnite Map",
@@ -52,7 +41,7 @@ async function scrapeData(url) {
         };
         return playerCount;
     } catch (e) {
-        console.error(`❌ فشل السحب: ${e.message}`);
+        console.error(`❌ حظر من الموقع: ${e.response?.status || e.message}`);
         return null;
     }
 }
@@ -61,9 +50,8 @@ async function updateStatus(isManual = false) {
     try {
         const channel = await client.channels.fetch(CONFIG.channelId).catch(() => null);
         if (!channel) return;
-
         const count = await scrapeData(CONFIG.mapUrl);
-        if (count === null) return;
+        if (count === null) return; // إذا لا يزال 403 سيتوقف هنا ولن يرسل خطأ
 
         const embed = new EmbedBuilder()
             .setTitle(`🎮 مراقب الماب: ${state.mapInfo.name}`)
@@ -74,12 +62,10 @@ async function updateStatus(isManual = false) {
                 { name: '🎫 الكود', value: `\`\`\`yaml\n${state.mapInfo.code}\`\`\``, inline: true }
             )
             .setThumbnail(state.mapInfo.imageUrl)
-            .setFooter({ text: `آخر تحديث ${isManual ? '(يدوي)' : '(تلقائي)'}` })
+            .setFooter({ text: `آخر تحديث: ${new Date().toLocaleTimeString('ar-SA')}` })
             .setTimestamp();
 
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('refresh_stats').setLabel('تحديث الآن 🔄').setStyle(ButtonStyle.Primary)
-        );
+        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('refresh_stats').setLabel('تحديث 🔄').setStyle(ButtonStyle.Primary));
 
         if (!state.statusMessageId) {
             const msg = await channel.send({ embeds: [embed], components: [row] });
@@ -87,28 +73,21 @@ async function updateStatus(isManual = false) {
         } else {
             const msg = await channel.messages.fetch(state.statusMessageId).catch(() => null);
             if (msg) await msg.edit({ embeds: [embed], components: [row] });
-            else {
-                const newMsg = await channel.send({ embeds: [embed], components: [row] });
-                state.statusMessageId = newMsg.id;
-            }
+            else state.statusMessageId = (await channel.send({ embeds: [embed], components: [row] })).id;
         }
 
-        // نظام المنشن الذكي
         if (count >= 10 && !state.didMentionEveryone) {
-            await channel.send(`📢 @everyone الماب فيه حركة! العدد وصل: **${count}**`);
+            await channel.send(`📢 @everyone الماب امتلأ! العدد: **${count}**`);
             state.didMentionEveryone = true;
         } else if (count < 10) state.didMentionEveryone = false;
-
         client.user.setActivity(`${count} لاعب`, { type: ActivityType.Watching });
     } catch (e) { console.error(e); }
 }
 
 client.once(Events.ClientReady, async (c) => {
-    console.log(`🟢 متصل باسم: ${c.user.tag}`);
+    console.log(`🟢 متصل: ${c.user.tag}`);
     const rest = new REST({ version: '10' }).setToken(CONFIG.token);
-    await rest.put(Routes.applicationCommands(CONFIG.clientId), { body: [
-        new SlashCommandBuilder().setName('setmap').setDescription('تغيير الرابط').addStringOption(o => o.setName('url').setRequired(true).setDescription('رابط fortnite.gg'))
-    ]});
+    await rest.put(Routes.applicationCommands(CONFIG.clientId), { body: [new SlashCommandBuilder().setName('setmap').setDescription('تغيير الرابط').addStringOption(o => o.setName('url').setRequired(true).setDescription('رابط fortnite.gg'))] });
     updateStatus();
     cron.schedule(`*/${CONFIG.updateInterval} * * * *`, () => updateStatus());
 });
@@ -117,7 +96,7 @@ client.on(Events.InteractionCreate, async (int) => {
     if (int.isChatInputCommand() && int.commandName === 'setmap') {
         CONFIG.mapUrl = int.options.getString('url');
         state.didMentionEveryone = false;
-        await int.reply({ content: '✅ تم تحديث الرابط!', ephemeral: true });
+        await int.reply({ content: '✅ تم التحديث!', ephemeral: true });
         updateStatus();
     }
     if (int.isButton() && int.customId === 'refresh_stats') {
