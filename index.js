@@ -1,75 +1,148 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, EmbedBuilder, ActivityType, Events } = require('discord.js');
-const axios = require('axios');
+const {
+  Client,
+  GatewayIntentBits,
+  PermissionsBitField,
+  EmbedBuilder
+} = require('discord.js');
 
 const CONFIG = {
-    token: process.env.DISCORD_TOKEN,
-    channelId: process.env.CHANNEL_ID,
-    // كود الماب فقط (مثال: 2650-2440-2051)
-    mapCode: (process.env.MAP_URL || '2650-2440-2051').replace(/[^0-9-]/g, '')
+  PREFIX: "!",
+  CONCURRENT: 4,
+  DELAY: 1000,
+  TOKENS: process.env.TOKENS.split(",")
 };
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-let statusMessageId = null;
+// تشغيل البوتات
+const bots = CONFIG.TOKENS.map((token, i) => {
+  const client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMembers,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildPresences
+    ]
+  });
 
-async function getMapInfo() {
-    try {
-        // استخدام API المطورين المباشر (أكثر استقراراً من المواقع)
-        const res = await axios.get(`https://fortnite-api.com/v1/map`);
-        // ملاحظة: هذا المصدر يوفر معلومات عامة، لسحب عدد لاعبين ماب محدد بدقة 100% 
-        // سنستخدم هذا الرابط الذي لا يحظر السيرفرات:
-        const islandRes = await axios.get(`https://api.fnbr.co/v1/stats/island?code=${CONFIG.mapCode}`);
-        
-        return {
-            name: islandRes.data.data.name || "Fortnite Island",
-            players: islandRes.data.data.onlinePlayers || 0,
-            image: islandRes.data.data.image || ""
-        };
-    } catch (e) {
-        // محاولة أخيرة إذا فشل الموقع السابق
-        try {
-            const backup = await axios.get(`https://fortnite-api.com/v2/cosmetics/br/new`);
-            return { name: "Fortnite Map", players: "متصل ✅", image: "" };
-        } catch (err) {
-            console.error("❌ حظر شامل من مزود الخدمة");
-            return null;
-        }
-    }
-}
+  client.login(token);
 
-async function update() {
-    const data = await getMapInfo();
-    if (!data) return;
+  client.once("ready", () => {
+    console.log(`🤖 Bot ${i + 1} جاهز`);
+  });
 
-    const channel = await client.channels.fetch(CONFIG.channelId).catch(() => null);
-    if (!channel) return;
-
-    const embed = new EmbedBuilder()
-        .setTitle(`🌐 مراقب الماب: ${data.name}`)
-        .setColor('#5865F2')
-        .addFields(
-            { name: '👥 اللاعبين', value: `\`${data.players}\``, inline: true },
-            { name: '🎫 الكود', value: `\`${CONFIG.mapCode}\``, inline: true }
-        )
-        .setThumbnail(data.image)
-        .setFooter({ text: 'تحديث تلقائي كل دقيقة' })
-        .setTimestamp();
-
-    if (!statusMessageId) {
-        const msg = await channel.send({ embeds: [embed] });
-        statusMessageId = msg.id;
-    } else {
-        const msg = await channel.messages.fetch(statusMessageId).catch(() => null);
-        if (msg) await msg.edit({ embeds: [embed] });
-        else statusMessageId = (await channel.send({ embeds: [embed] })).id;
-    }
-}
-
-client.once(Events.ClientReady, () => {
-    console.log(`✅ البوت جاهز ويعمل بمصدر بيانات محمي`);
-    update();
-    setInterval(update, 60000); // تحديث كل دقيقة
+  return client;
 });
 
-client.login(CONFIG.token);
-ص
+function isAdmin(member) {
+  return member.permissions.has(PermissionsBitField.Flags.Administrator);
+}
+
+function chunkArray(array, parts) {
+  const size = Math.ceil(array.length / parts);
+  return Array.from({ length: parts }, (_, i) =>
+    array.slice(i * size, i * size + size)
+  );
+}
+
+async function runWorker(bot, members, message, id) {
+  let sent = 0;
+  let fail = 0;
+  const start = Date.now();
+
+  for (let i = 0; i < members.length; i += CONFIG.CONCURRENT) {
+    const chunk = members.slice(i, i + CONFIG.CONCURRENT);
+
+    await Promise.all(
+      chunk.map(m =>
+        m.send(message)
+          .then(() => sent++)
+          .catch(() => fail++)
+      )
+    );
+
+    const done = sent + fail;
+    const elapsed = (Date.now() - start) / 1000;
+    const rate = done / elapsed;
+    const eta = Math.round((members.length - done) / rate);
+
+    console.log(`Bot ${id} | ${done}/${members.length} | ETA: ${eta}s`);
+
+    await new Promise(r => setTimeout(r, CONFIG.DELAY));
+  }
+
+  return { sent, fail };
+}
+
+async function ultraBroadcast(guild, message, filterFn = null) {
+  let members = Array.from((await guild.members.fetch()).values());
+
+  if (filterFn) members = members.filter(filterFn);
+
+  const chunks = chunkArray(members, bots.length);
+
+  const results = await Promise.all(
+    chunks.map((chunk, i) =>
+      runWorker(bots[i], chunk, message, i + 1)
+    )
+  );
+
+  return {
+    totalSent: results.reduce((a, b) => a + b.sent, 0),
+    totalFail: results.reduce((a, b) => a + b.fail, 0)
+  };
+}
+
+// الأوامر
+bots[0].on("messageCreate", async msg => {
+  if (!msg.content.startsWith(CONFIG.PREFIX)) return;
+  if (msg.author.bot) return;
+
+  if (!isAdmin(msg.member))
+    return msg.reply("❌ ما عندك صلاحية");
+
+  const args = msg.content.slice(CONFIG.PREFIX.length).split(" ");
+  const cmd = args.shift().toLowerCase();
+
+  if (cmd === "bc") {
+    const text = args.join(" ");
+    msg.channel.send("🚀 جاري الإرسال...");
+    const res = await ultraBroadcast(msg.guild, text);
+    msg.channel.send(`✅ تم: ${res.totalSent} | ❌: ${res.totalFail}`);
+  }
+
+  if (cmd === "bc-online") {
+    const text = args.join(" ");
+    const res = await ultraBroadcast(
+      msg.guild,
+      text,
+      m => m.presence?.status === "online"
+    );
+    msg.channel.send(`✅ أونلاين: ${res.totalSent}`);
+  }
+
+  if (cmd === "bc-role") {
+    const role = msg.mentions.roles.first();
+    const text = args.slice(1).join(" ");
+    if (!role) return msg.reply("حدد رول");
+
+    const res = await ultraBroadcast(
+      msg.guild,
+      text,
+      m => m.roles.cache.has(role.id)
+    );
+
+    msg.channel.send(`✅ للرول: ${res.totalSent}`);
+  }
+
+  if (cmd === "bc-embed") {
+    const text = args.join(" ");
+    const embed = new EmbedBuilder()
+      .setTitle("📢 إعلان")
+      .setDescription(text)
+      .setColor("Blue");
+
+    const res = await ultraBroadcast(msg.guild, { embeds: [embed] });
+    msg.channel.send(`✅ Embed: ${res.totalSent}`);
+  }
+});
