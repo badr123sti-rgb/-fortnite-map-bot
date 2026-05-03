@@ -1,20 +1,24 @@
-require('dotenv').config();
 const {
   Client,
   GatewayIntentBits,
   PermissionsBitField,
   EmbedBuilder
-} = require('discord.js');
+} = require("discord.js");
 
-const CONFIG = {
-  PREFIX: "!",
-  CONCURRENT: 4,
-  DELAY: 1000,
-  TOKENS: process.env.TOKENS.split(",")
-};
+// 🔑 من Railway Variables
+const TOKENS = process.env.TOKENS?.split(",") || [];
 
-// تشغيل البوتات
-const bots = CONFIG.TOKENS.map((token, i) => {
+if (TOKENS.length === 0) {
+  console.log("❌ TOKENS غير موجود في Railway Variables");
+}
+
+const PREFIX = "!";
+
+const CONCURRENT = 4;
+const DELAY = 1000;
+
+// 🤖 تشغيل كل البوتات
+const bots = TOKENS.map((token, i) => {
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -28,33 +32,36 @@ const bots = CONFIG.TOKENS.map((token, i) => {
   client.login(token);
 
   client.once("ready", () => {
-    console.log(`🤖 Bot ${i + 1} جاهز`);
+    console.log(`🤖 Bot ${i + 1} جاهز: ${client.user.tag}`);
   });
 
   return client;
 });
 
+// 🔐 صلاحيات
 function isAdmin(member) {
   return member.permissions.has(PermissionsBitField.Flags.Administrator);
 }
 
-function chunkArray(array, parts) {
-  const size = Math.ceil(array.length / parts);
-  return Array.from({ length: parts }, (_, i) =>
-    array.slice(i * size, i * size + size)
-  );
+// 📦 تقسيم الأعضاء
+function chunk(array, size) {
+  const result = [];
+  for (let i = 0; i < array.length; i += size) {
+    result.push(array.slice(i, i + size));
+  }
+  return result;
 }
 
-async function runWorker(bot, members, message, id) {
+// 🚀 إرسال سريع
+async function sendWorker(botId, members, message) {
   let sent = 0;
   let fail = 0;
-  const start = Date.now();
 
-  for (let i = 0; i < members.length; i += CONFIG.CONCURRENT) {
-    const chunk = members.slice(i, i + CONFIG.CONCURRENT);
+  for (let i = 0; i < members.length; i += CONCURRENT) {
+    const batch = members.slice(i, i + CONCURRENT);
 
     await Promise.all(
-      chunk.map(m =>
+      batch.map(m =>
         m.send(message)
           .then(() => sent++)
           .catch(() => fail++)
@@ -62,87 +69,94 @@ async function runWorker(bot, members, message, id) {
     );
 
     const done = sent + fail;
-    const elapsed = (Date.now() - start) / 1000;
-    const rate = done / elapsed;
-    const eta = Math.round((members.length - done) / rate);
+    console.log(`🤖 Bot ${botId} | ${done}/${members.length}`);
 
-    console.log(`Bot ${id} | ${done}/${members.length} | ETA: ${eta}s`);
-
-    await new Promise(r => setTimeout(r, CONFIG.DELAY));
+    await new Promise(r => setTimeout(r, DELAY));
   }
 
   return { sent, fail };
 }
 
-async function ultraBroadcast(guild, message, filterFn = null) {
+// 🔥 برودكاست كامل
+async function broadcast(guild, message, filter = null) {
   let members = Array.from((await guild.members.fetch()).values());
 
-  if (filterFn) members = members.filter(filterFn);
+  if (filter) members = members.filter(filter);
 
-  const chunks = chunkArray(members, bots.length);
+  const chunks = chunk(members, bots.length);
 
   const results = await Promise.all(
-    chunks.map((chunk, i) =>
-      runWorker(bots[i], chunk, message, i + 1)
+    chunks.map((c, i) =>
+      sendWorker(i + 1, c, message)
     )
   );
 
   return {
-    totalSent: results.reduce((a, b) => a + b.sent, 0),
-    totalFail: results.reduce((a, b) => a + b.fail, 0)
+    sent: results.reduce((a, b) => a + b.sent, 0),
+    fail: results.reduce((a, b) => a + b.fail, 0)
   };
 }
 
-// الأوامر
+// 🎮 الأوامر
 bots[0].on("messageCreate", async msg => {
-  if (!msg.content.startsWith(CONFIG.PREFIX)) return;
+  if (!msg.content.startsWith(PREFIX)) return;
   if (msg.author.bot) return;
 
-  if (!isAdmin(msg.member))
-    return msg.reply("❌ ما عندك صلاحية");
+  if (!isAdmin(msg.member)) return;
 
-  const args = msg.content.slice(CONFIG.PREFIX.length).split(" ");
+  const args = msg.content.slice(PREFIX.length).split(" ");
   const cmd = args.shift().toLowerCase();
 
+  // 📢 برودكاست عام
   if (cmd === "bc") {
     const text = args.join(" ");
     msg.channel.send("🚀 جاري الإرسال...");
-    const res = await ultraBroadcast(msg.guild, text);
-    msg.channel.send(`✅ تم: ${res.totalSent} | ❌: ${res.totalFail}`);
+
+    const res = await broadcast(msg.guild, text);
+
+    msg.channel.send(`✅ تم\n📨 ${res.sent}\n❌ ${res.fail}`);
   }
 
+  // 🟢 أونلاين
   if (cmd === "bc-online") {
     const text = args.join(" ");
-    const res = await ultraBroadcast(
+
+    const res = await broadcast(
       msg.guild,
       text,
       m => m.presence?.status === "online"
     );
-    msg.channel.send(`✅ أونلاين: ${res.totalSent}`);
+
+    msg.channel.send(`🟢 أونلاين: ${res.sent}`);
   }
 
+  // 🎭 رول
   if (cmd === "bc-role") {
     const role = msg.mentions.roles.first();
     const text = args.slice(1).join(" ");
+
     if (!role) return msg.reply("حدد رول");
 
-    const res = await ultraBroadcast(
+    const res = await broadcast(
       msg.guild,
       text,
       m => m.roles.cache.has(role.id)
     );
 
-    msg.channel.send(`✅ للرول: ${res.totalSent}`);
+    msg.channel.send(`🎭 رول: ${res.sent}`);
   }
 
+  // ✨ Embed
   if (cmd === "bc-embed") {
     const text = args.join(" ");
+
     const embed = new EmbedBuilder()
       .setTitle("📢 إعلان")
       .setDescription(text)
       .setColor("Blue");
 
-    const res = await ultraBroadcast(msg.guild, { embeds: [embed] });
-    msg.channel.send(`✅ Embed: ${res.totalSent}`);
+    const res = await broadcast(msg.guild, { embeds: [embed] });
+
+    msg.channel.send(`✨ Embed: ${res.sent}`);
   }
 });
