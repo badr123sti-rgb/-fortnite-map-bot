@@ -11,15 +11,30 @@ const {
   ButtonStyle
 } = require("discord.js");
 
-// 🔐 التوكن
-if (!process.env.TOKEN) {
-  console.log("❌ TOKEN missing");
+
+// 🔐 حماية من الخطأ
+
+if (!process.env.TOKENS) {
+
+  console.log("❌ TOKENS missing in Railway Variables");
+
   process.exit(1);
+
 }
 
-const TOKEN = process.env.TOKEN;
+// 🤖 التوكنات
 
-// ⚙️ إعدادات
+const TOKENS = process.env.TOKENS.split(",").filter(t => t.trim());
+
+if (TOKENS.length === 0) {
+
+  console.log("❌ No valid tokens found");
+
+  process.exit(1);
+
+}
+
+// 🔐 // ⚙️ إعدادات
 const CONCURRENT = 4;
 const DELAY = 1000;
 
