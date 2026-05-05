@@ -11,28 +11,46 @@ const {
   ButtonStyle
 } = require("discord.js");
 
-// 🔐 التوكن
-if (!process.env.TOKEN) {
-  console.log("❌ TOKEN missing");
+// 🔐 TOKENS
+if (!process.env.TOKENS) {
+  console.log("❌ TOKENS missing");
   process.exit(1);
 }
 
-const TOKEN = process.env.TOKEN;
+const TOKENS = process.env.TOKENS.split(",").filter(t => t.trim());
+
+if (!TOKENS.length) {
+  console.log("❌ No tokens");
+  process.exit(1);
+}
 
 // ⚙️ إعدادات
 const CONCURRENT = 4;
 const DELAY = 1000;
 
-// 🤖 البوت
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildPresences
-  ]
+// 🤖 تشغيل البوتات
+const bots = TOKENS.map((token, i) => {
+  const client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMembers,
+      GatewayIntentBits.GuildPresences
+    ]
+  });
+
+  client.login(token.trim());
+
+  client.once("ready", () => {
+    console.log(`🤖 Bot ${i + 1} ready: ${client.user.tag}`);
+  });
+
+  return client;
 });
 
-// 📦 الأمر
+// 🎯 البوت الرئيسي للأوامر
+const mainBot = bots[0];
+
+// 📦 Slash Command
 const command = new SlashCommandBuilder()
   .setName("broadcast")
   .setDescription("برودكاست احترافي")
@@ -41,7 +59,7 @@ const command = new SlashCommandBuilder()
   )
   .addStringOption(opt =>
     opt.setName("type")
-      .setDescription("لمن ترسل؟")
+      .setDescription("لمن ترسل")
       .setRequired(true)
       .addChoices(
         { name: "الكل", value: "all" },
@@ -50,21 +68,26 @@ const command = new SlashCommandBuilder()
       )
   )
   .addRoleOption(opt =>
-    opt.setName("role").setDescription("حدد رول (لو اخترت رول)")
+    opt.setName("role").setDescription("حدد رول")
   )
   .addBooleanOption(opt =>
-    opt.setName("mention").setDescription("إضافة اسم العضو؟")
+    opt.setName("mention").setDescription("إظهار اسم العضو")
   );
 
-// تسجيل الأمر
-const rest = new REST({ version: "10" }).setToken(TOKEN);
+// 📡 تسجيل الأمر
+const rest = new REST({ version: "10" }).setToken(TOKENS[0]);
 
-(async () => {
-  await rest.put(
-    Routes.applicationCommands("YOUR_BOT_ID"),
-    { body: [command.toJSON()] }
-  );
-})();
+mainBot.once("ready", async () => {
+  try {
+    await rest.put(
+      Routes.applicationCommands(mainBot.user.id),
+      { body: [command.toJSON()] }
+    );
+    console.log("✅ Slash registered");
+  } catch (e) {
+    console.log(e);
+  }
+});
 
 // ⏳ ETA
 function calcETA(total) {
@@ -72,8 +95,17 @@ function calcETA(total) {
   return Math.ceil(total / rate);
 }
 
-// 📤 إرسال
-async function sendAll(members, message, mention) {
+// 📦 تقسيم
+function chunk(arr, size) {
+  const res = [];
+  for (let i = 0; i < arr.length; i += size) {
+    res.push(arr.slice(i, i + size));
+  }
+  return res;
+}
+
+// 🚀 إرسال من كل البوتات
+async function sendWorker(botId, members, message, mention) {
   let sent = 0;
   let fail = 0;
 
@@ -97,14 +129,29 @@ async function sendAll(members, message, mention) {
       })
     );
 
+    console.log(`Bot ${botId}: ${sent + fail}/${members.length}`);
     await new Promise(r => setTimeout(r, DELAY));
   }
 
   return { sent, fail };
 }
 
+// 🔥 Broadcast
+async function broadcastAll(members, message, mention) {
+  const parts = chunk(members, bots.length);
+
+  const results = await Promise.all(
+    parts.map((p, i) => sendWorker(i + 1, p, message, mention))
+  );
+
+  return {
+    sent: results.reduce((a, b) => a + b.sent, 0),
+    fail: results.reduce((a, b) => a + b.fail, 0)
+  };
+}
+
 // 🎮 الأوامر
-client.on("interactionCreate", async interaction => {
+mainBot.on("interactionCreate", async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "broadcast") {
@@ -120,14 +167,13 @@ client.on("interactionCreate", async interaction => {
       (await interaction.guild.members.fetch()).values()
     );
 
-    // فلترة
     if (type === "online") {
       members = members.filter(m => m.presence?.status === "online");
     }
 
     if (type === "role") {
       if (!role)
-        return interaction.reply({ content: "❌ لازم تحدد رول", ephemeral: true });
+        return interaction.reply({ content: "❌ حدد رول", ephemeral: true });
 
       members = members.filter(m => m.roles.cache.has(role.id));
     }
@@ -146,11 +192,11 @@ client.on("interactionCreate", async interaction => {
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId("confirm")
+        .setCustomId("yes")
         .setLabel("✅ تأكيد")
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
-        .setCustomId("cancel")
+        .setCustomId("no")
         .setLabel("❌ إلغاء")
         .setStyle(ButtonStyle.Danger)
     );
@@ -168,21 +214,21 @@ client.on("interactionCreate", async interaction => {
     });
 
     collector.on("collect", async i => {
-      if (i.customId === "cancel") {
+      if (i.customId === "no") {
         await i.update({ content: "❌ تم الإلغاء", components: [] });
         collector.stop();
       }
 
-      if (i.customId === "confirm") {
+      if (i.customId === "yes") {
         await i.update({ content: "🚀 جاري الإرسال...", components: [] });
 
-        const result = await sendAll(members, message, mention);
+        const res = await broadcastAll(members, message, mention);
 
         const done = new EmbedBuilder()
           .setTitle("✅ انتهى")
           .addFields(
-            { name: "📨 تم", value: `${result.sent}` },
-            { name: "❌ فشل", value: `${result.fail}` }
+            { name: "📨 تم", value: `${res.sent}` },
+            { name: "❌ فشل", value: `${res.fail}` }
           )
           .setColor("Green");
 
@@ -192,5 +238,3 @@ client.on("interactionCreate", async interaction => {
     });
   }
 });
-
-client.login(TOKEN);
