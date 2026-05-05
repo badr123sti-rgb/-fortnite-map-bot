@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Dashboard</title>
+<script src="/socket.io/socket.io.js"></script>
+
+<style>
+body{background:#0f172a;color:white;font-family:sans-serif;padding:30px}
+input,select{padding:10px;margin:5px}
+button{padding:10px;margin:5px;background:#6366f1;color:white;border:none}
+.stop{background:red}
+.bar{height:20px;background:#333;margin-top:10px}
+.bar div{height:100%;background:#22c55e;width:0%}
+.log{background:#111;margin-top:10px;padding:10px;height:200px;overflow:auto}
+</style>
+</head>
+
+<body>
+
+<h2>🔥 Broadcast Dashboard</h2>
+
+<input id="msg" placeholder="Message">
+
+<select id="type">
+<option value="all">All</option>
+<option value="online">Online</option>
+<option value="role">Role</option>
+</select>
+
+<input id="role" placeholder="Role ID">
+
+<label><input type="checkbox" id="mention"> Mention</label>
+<label><input type="checkbox" id="embed"> Embed</label>
+
+<br>
+
+<button onclick="start()">🚀 Start</button>
+<button class="stop" onclick="stop()">⛔ Stop</button>
+
+<div class="bar"><div id="bar"></div></div>
+
+<div id="log" class="log"></div>
+
+<script>
+const s = io();
+
+function log(t){
+document.getElementById("log").innerHTML += "<p>"+t+"</p>";
+}
+
+function start(){
+s.emit("start",{
+message:msg.value,
+type:type.value,
+role:role.value,
+mention:mention.checked,
+embed:embed.checked
+});
+}
+
+function stop(){
+s.emit("stop");
+log("⛔ تم الإيقاف");
+}
+
+s.on("progress",d=>{
+document.getElementById("bar").style.width = d.percent+"%";
+});
+
+s.on("log",t=>log(t));
+</script>
+
+</body>
+</html>
