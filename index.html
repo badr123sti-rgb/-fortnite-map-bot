@@ -1,74 +1,70 @@
 <!DOCTYPE html>
 <html>
-<head>
-<meta charset="UTF-8">
-<title>Dashboard</title>
+<body style="background:#111;color:white;font-family:sans-serif">
+
+<h2>Login</h2>
+
+<input id="u" placeholder="username">
+<input id="p" placeholder="password">
+<button onclick="login()">Login</button>
+
+<hr>
+
+<h2>Broadcast</h2>
+
+<input id="msg" placeholder="message">
+<label><input type="checkbox" id="m">Mention</label>
+<label><input type="checkbox" id="e">Embed</label>
+
+<button onclick="start()">Start</button>
+<button onclick="stop()">Stop</button>
+
+<div id="log"></div>
+
 <script src="/socket.io/socket.io.js"></script>
-
-<style>
-body{background:#0f172a;color:white;font-family:sans-serif;padding:30px}
-input,select{padding:10px;margin:5px}
-button{padding:10px;margin:5px;background:#6366f1;color:white;border:none}
-.stop{background:red}
-.bar{height:20px;background:#333;margin-top:10px}
-.bar div{height:100%;background:#22c55e;width:0%}
-.log{background:#111;margin-top:10px;padding:10px;height:200px;overflow:auto}
-</style>
-</head>
-
-<body>
-
-<h2>🔥 Broadcast Dashboard</h2>
-
-<input id="msg" placeholder="Message">
-
-<select id="type">
-<option value="all">All</option>
-<option value="online">Online</option>
-<option value="role">Role</option>
-</select>
-
-<input id="role" placeholder="Role ID">
-
-<label><input type="checkbox" id="mention"> Mention</label>
-<label><input type="checkbox" id="embed"> Embed</label>
-
-<br>
-
-<button onclick="start()">🚀 Start</button>
-<button class="stop" onclick="stop()">⛔ Stop</button>
-
-<div class="bar"><div id="bar"></div></div>
-
-<div id="log" class="log"></div>
-
 <script>
+let token;
 const s = io();
 
-function log(t){
-document.getElementById("log").innerHTML += "<p>"+t+"</p>";
+async function login(){
+  const res = await fetch("/login",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({username:u.value,password:p.value})
+  });
+
+  const data = await res.json();
+  token = data.token;
+  log("✅ logged in");
 }
 
 function start(){
-s.emit("start",{
-message:msg.value,
-type:type.value,
-role:role.value,
-mention:mention.checked,
-embed:embed.checked
-});
+  s.emit("start",{
+    message:msg.value,
+    mention:m.checked,
+    embed:e.checked,
+    user:u.value
+  });
 }
 
 function stop(){
-s.emit("stop");
-log("⛔ تم الإيقاف");
+  s.emit("stop");
+  log("⛔ stopped");
 }
 
 s.on("progress",d=>{
-document.getElementById("bar").style.width = d.percent+"%";
+  log("Progress: "+d.percent+"%");
+});
+
+s.on("done",d=>{
+  log("Done: "+d.sent);
 });
 
 s.on("log",t=>log(t));
+
+function log(t){
+  document.getElementById("log").innerHTML += "<p>"+t+"</p>";
+}
 </script>
 
 </body>
