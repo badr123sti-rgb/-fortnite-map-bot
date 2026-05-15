@@ -17,7 +17,7 @@ if (!process.env.TOKEN) {
   process.exit(1);
 }
 
-const TOKEN = process.env.TOKENS.split(",").filter(t => t.trim());
+const TOKEN = process.env.TOKEN.split(",").filter(t => t.trim());
 const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
 
 // ⚙️ إعدادات ذكية
