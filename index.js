@@ -12,12 +12,12 @@ const {
 } = require("discord.js");
 
 // 🔐 ENV
-if (!process.env.TOKENS) {
-  console.log("❌ TOKENS missing");
+if (!process.env.TOKEN) {
+  console.log("❌ TOKEN missing");
   process.exit(1);
 }
 
-const TOKENS = process.env.TOKENS.split(",").filter(t => t.trim());
+const TOKEN = process.env.TOKENS.split(",").filter(t => t.trim());
 const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
 
 // ⚙️ إعدادات ذكية
