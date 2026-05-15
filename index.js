@@ -17,41 +17,39 @@ if (!process.env.TOKEN) {
   process.exit(1);
 }
 
-const TOKEN = process.env.TOKEN.split(",").filter(t => t.trim());
+const TOKEN = process.env.TOKEN;
 const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
 
 // ⚙️ إعدادات ذكية
 let CONCURRENT = 4;
 let DELAY = 1000;
 
-// 🤖 تشغيل البوتات
-const bots = TOKENS.map(token => {
-  const client = new Client({
-    intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMembers,
-      GatewayIntentBits.GuildPresences
-    ]
-  });
-
-  client.login(token.trim());
-
-  client.once("ready", () => {
-    console.log(`🤖 ${client.user.tag} جاهز`);
-  });
-
-  return client;
+// 🤖 تشغيل البوت
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildPresences
+  ]
 });
 
-const mainBot = bots[0];
+client.login(TOKEN);
+
+client.once("ready", () => {
+  console.log(`🤖 ${client.user.tag} جاهز`);
+});
 
 // 📦 Slash
 const command = new SlashCommandBuilder()
   .setName("broadcast")
   .setDescription("برودكاست متطور")
+
   .addStringOption(opt =>
-    opt.setName("message").setDescription("الرسالة").setRequired(true)
+    opt.setName("message")
+      .setDescription("الرسالة")
+      .setRequired(true)
   )
+
   .addStringOption(opt =>
     opt.setName("type")
       .setDescription("لمن")
@@ -62,21 +60,26 @@ const command = new SlashCommandBuilder()
         { name: "رول", value: "role" }
       )
   )
+
   .addRoleOption(opt =>
-    opt.setName("role").setDescription("الرول")
+    opt.setName("role")
+      .setDescription("الرول")
   )
+
   .addBooleanOption(opt =>
-    opt.setName("mention").setDescription("إظهار المنشن")
+    opt.setName("mention")
+      .setDescription("إظهار المنشن")
   );
 
-// تسجيل
-const rest = new REST({ version: "10" }).setToken(TOKENS[0]);
+// 🔥 تسجيل الأوامر
+const rest = new REST({ version: "10" }).setToken(TOKEN);
 
-mainBot.once("ready", async () => {
+client.once("ready", async () => {
   await rest.put(
-    Routes.applicationCommands(mainBot.user.id),
+    Routes.applicationCommands(client.user.id),
     { body: [command.toJSON()] }
   );
+
   console.log("✅ Slash جاهز");
 });
 
@@ -86,31 +89,29 @@ function calcETA(total) {
   return Math.ceil(total / rate);
 }
 
-// 📦 تقسيم
-function chunk(arr, size) {
-  const res = [];
-  for (let i = 0; i < arr.length; i += size) {
-    res.push(arr.slice(i, i + size));
-  }
-  return res;
-}
-
 // 🔥 Worker
-async function sendWorker(id, members, message, mention, progress, logChannel) {
+async function sendWorker(members, message, mention, progress) {
+
   let sent = 0;
   let fail = 0;
 
   for (let i = 0; i < members.length; i += CONCURRENT) {
+
     const batch = members.slice(i, i + CONCURRENT);
 
     await Promise.all(
       batch.map(async m => {
         try {
+
           let msg = message;
-          if (mention) msg = `${message}\n<@${m.id}>`;
+
+          if (mention)
+            msg = `${message}\n<@${m.id}>`;
 
           await m.send(msg);
+
           sent++;
+
         } catch {
           fail++;
         }
@@ -119,126 +120,220 @@ async function sendWorker(id, members, message, mention, progress, logChannel) {
 
     progress.done += batch.length;
 
-    // 📊 تحديث مباشر
-    const percent = ((progress.done / progress.total) * 100).toFixed(1);
+    const percent = (
+      (progress.done / progress.total) * 100
+    ).toFixed(1);
 
     console.log(`📡 ${percent}%`);
 
-    // 🧠 Smart delay (يحمي من الحظر)
-    if (fail > sent / 2) DELAY += 500;
+    // 🧠 حماية ذكية
+    if (fail > sent / 2)
+      DELAY += 500;
 
-    await new Promise(r => setTimeout(r, DELAY));
+    await new Promise(r =>
+      setTimeout(r, DELAY)
+    );
   }
 
   return { sent, fail };
 }
 
 // 🚀 Broadcast
-async function broadcastAll(members, message, mention, interaction) {
-  const logChannel = interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+async function broadcastAll(
+  members,
+  message,
+  mention,
+  interaction
+) {
+
+  const logChannel =
+    interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
 
   const progress = {
     done: 0,
     total: members.length
   };
 
-  const parts = chunk(members, bots.length);
-
   const startTime = Date.now();
 
-  const logEmbed = new EmbedBuilder()
+  // 📡 بدء
+  const startEmbed = new EmbedBuilder()
     .setTitle("📡 بدء البرودكاست")
     .addFields(
-      { name: "👥 العدد", value: `${members.length}` },
-      { name: "⏳ ETA", value: `${calcETA(members.length)} ثانية` }
+      {
+        name: "👥 العدد",
+        value: `${members.length}`
+      },
+      {
+        name: "⏳ ETA",
+        value: `${calcETA(members.length)} ثانية`
+      }
     )
     .setColor("Blue");
 
-  if (logChannel) await logChannel.send({ embeds: [logEmbed] });
+  if (logChannel)
+    await logChannel.send({
+      embeds: [startEmbed]
+    });
 
-  const results = await Promise.all(
-    parts.map((p, i) =>
-      sendWorker(i + 1, p, message, mention, progress, logChannel)
-    )
+  // 🔥 إرسال
+  const result = await sendWorker(
+    members,
+    message,
+    mention,
+    progress
   );
 
-  const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+  const duration =
+    ((Date.now() - startTime) / 1000).toFixed(1);
 
-  const final = {
-    sent: results.reduce((a, b) => a + b.sent, 0),
-    fail: results.reduce((a, b) => a + b.fail, 0)
-  };
-
+  // ✅ نهاية
   const doneEmbed = new EmbedBuilder()
     .setTitle("✅ انتهى البرودكاست")
     .addFields(
-      { name: "📨 تم", value: `${final.sent}` },
-      { name: "❌ فشل", value: `${final.fail}` },
-      { name: "⏱️ الوقت الفعلي", value: `${duration}s` }
+      {
+        name: "📨 تم",
+        value: `${result.sent}`
+      },
+      {
+        name: "❌ فشل",
+        value: `${result.fail}`
+      },
+      {
+        name: "⏱️ الوقت",
+        value: `${duration}s`
+      }
     )
     .setColor("Green");
 
-  if (logChannel) await logChannel.send({ embeds: [doneEmbed] });
+  if (logChannel)
+    await logChannel.send({
+      embeds: [doneEmbed]
+    });
 
-  return final;
+  return result;
 }
 
 // 🎮 الأوامر
-mainBot.on("interactionCreate", async interaction => {
+client.on("interactionCreate", async interaction => {
+
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === "broadcast") {
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator))
-      return interaction.reply({ content: "❌ ما عندك صلاحية", ephemeral: true });
 
-    const message = interaction.options.getString("message");
-    const type = interaction.options.getString("type");
-    const role = interaction.options.getRole("role");
-    const mention = interaction.options.getBoolean("mention");
+    // 🔐 صلاحيات
+    if (
+      !interaction.member.permissions.has(
+        PermissionsBitField.Flags.Administrator
+      )
+    ) {
+      return interaction.reply({
+        content: "❌ ما عندك صلاحية",
+        ephemeral: true
+      });
+    }
+
+    const message =
+      interaction.options.getString("message");
+
+    const type =
+      interaction.options.getString("type");
+
+    const role =
+      interaction.options.getRole("role");
+
+    const mention =
+      interaction.options.getBoolean("mention");
 
     let members = Array.from(
       (await interaction.guild.members.fetch()).values()
     );
 
+    // 👥 فلترة
     if (type === "online") {
-      members = members.filter(m => m.presence?.status === "online");
+      members = members.filter(
+        m => m.presence?.status === "online"
+      );
     }
 
     if (type === "role") {
-      if (!role) return interaction.reply({ content: "حدد رول", ephemeral: true });
-      members = members.filter(m => m.roles.cache.has(role.id));
+
+      if (!role) {
+        return interaction.reply({
+          content: "حدد رول",
+          ephemeral: true
+        });
+      }
+
+      members = members.filter(
+        m => m.roles.cache.has(role.id)
+      );
     }
 
+    // 📢 تأكيد
     const embed = new EmbedBuilder()
-      .setTitle("📢 تأكيد")
+      .setTitle("📢 تأكيد البرودكاست")
       .setDescription(message)
       .addFields(
-        { name: "👥 العدد", value: `${members.length}` },
-        { name: "⏳ ETA", value: `${calcETA(members.length)} ثانية` }
+        {
+          name: "👥 العدد",
+          value: `${members.length}`
+        },
+        {
+          name: "⏳ ETA",
+          value: `${calcETA(members.length)} ثانية`
+        }
       );
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("yes").setLabel("تأكيد").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("no").setLabel("إلغاء").setStyle(ButtonStyle.Danger)
-    );
+    const row = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId("yes")
+          .setLabel("تأكيد")
+          .setStyle(ButtonStyle.Success),
 
-    await interaction.reply({ embeds: [embed], components: [row] });
+        new ButtonBuilder()
+          .setCustomId("no")
+          .setLabel("إلغاء")
+          .setStyle(ButtonStyle.Danger)
+      );
 
-    const filter = i => i.user.id === interaction.user.id;
-
-    const collector = interaction.channel.createMessageComponentCollector({
-      filter,
-      time: 15000
+    await interaction.reply({
+      embeds: [embed],
+      components: [row]
     });
 
+    const filter =
+      i => i.user.id === interaction.user.id;
+
+    const collector =
+      interaction.channel.createMessageComponentCollector({
+        filter,
+        time: 15000
+      });
+
     collector.on("collect", async i => {
+
+      // ❌ إلغاء
       if (i.customId === "no") {
-        await i.update({ content: "تم الإلغاء", components: [] });
+
+        await i.update({
+          content: "تم الإلغاء",
+          embeds: [],
+          components: []
+        });
+
         collector.stop();
       }
 
+      // ✅ تأكيد
       if (i.customId === "yes") {
-        await i.update({ content: "🚀 جاري...", components: [] });
+
+        await i.update({
+          content: "🚀 جاري الإرسال...",
+          embeds: [],
+          components: []
+        });
 
         const res = await broadcastAll(
           members,
@@ -248,13 +343,22 @@ mainBot.on("interactionCreate", async interaction => {
         );
 
         const done = new EmbedBuilder()
-          .setTitle("انتهى")
+          .setTitle("✅ انتهى")
           .addFields(
-            { name: "تم", value: `${res.sent}` },
-            { name: "فشل", value: `${res.fail}` }
+            {
+              name: "📨 تم",
+              value: `${res.sent}`
+            },
+            {
+              name: "❌ فشل",
+              value: `${res.fail}`
+            }
           );
 
-        await interaction.followUp({ embeds: [done] });
+        await interaction.followUp({
+          embeds: [done]
+        });
+
         collector.stop();
       }
     });
