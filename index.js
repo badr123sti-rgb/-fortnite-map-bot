@@ -21,7 +21,7 @@ if (!process.env.TOKEN) {
 
 const TOKEN = process.env.TOKEN;
 
-// 📁 ملف اللوقات
+// 📁 ملف اللوق
 const LOGS_FILE = "./logs.json";
 
 if (!fs.existsSync(LOGS_FILE)) {
@@ -76,13 +76,20 @@ const commands = [
         .addChoices(
           { name: "الكل", value: "all" },
           { name: "اونلاين", value: "online" },
-          { name: "رول", value: "role" }
+          { name: "رول", value: "role" },
+          { name: "شخص", value: "user" },
+          { name: "امبيد", value: "embed" }
         )
     )
 
     .addRoleOption(opt =>
       opt.setName("role")
         .setDescription("الرول")
+    )
+
+    .addUserOption(opt =>
+      opt.setName("user")
+        .setDescription("الشخص")
     )
 
     .addBooleanOption(opt =>
@@ -98,11 +105,6 @@ const commands = [
     .addStringOption(opt =>
       opt.setName("embed_title")
         .setDescription("عنوان الامبيد")
-    )
-
-    .addUserOption(opt =>
-      opt.setName("user")
-        .setDescription("إرسال لشخص واحد")
     ),
 
   // 📡 Set Log
@@ -304,7 +306,7 @@ client.on("interactionCreate", async interaction => {
 
   if (!interaction.isChatInputCommand()) return;
 
-  // 📡 تعيين روم اللوق
+  // 📡 Set Log
   if (interaction.commandName === "setlog") {
 
     if (
@@ -356,24 +358,35 @@ client.on("interactionCreate", async interaction => {
     const role =
       interaction.options.getRole("role");
 
+    const targetUser =
+      interaction.options.getUser("user");
+
     const mention =
       interaction.options.getBoolean("mention");
 
-    const embedMode =
+    let embedMode =
       interaction.options.getBoolean("embed");
 
     const embedTitle =
       interaction.options.getString("embed_title");
 
-    const targetUser =
-      interaction.options.getUser("user");
+    // 📦 امبيد تلقائي
+    if (type === "embed")
+      embedMode = true;
 
     let members = Array.from(
       (await interaction.guild.members.fetch()).values()
     );
 
-    // 👤 شخص واحد
-    if (targetUser) {
+    // 👤 شخص
+    if (type === "user") {
+
+      if (!targetUser) {
+        return interaction.reply({
+          content: "حدد شخص",
+          ephemeral: true
+        });
+      }
 
       const member =
         await interaction.guild.members.fetch(targetUser.id);
