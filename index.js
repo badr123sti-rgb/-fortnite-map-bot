@@ -11,6 +11,8 @@ const {
   ButtonStyle
 } = require("discord.js");
 
+const fs = require("fs");
+
 // 🔐 ENV
 if (!process.env.TOKEN) {
   console.log("❌ TOKEN missing");
@@ -18,7 +20,21 @@ if (!process.env.TOKEN) {
 }
 
 const TOKEN = process.env.TOKEN;
-const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
+
+// 📁 ملف اللوقات
+const LOGS_FILE = "./logs.json";
+
+if (!fs.existsSync(LOGS_FILE)) {
+  fs.writeFileSync(LOGS_FILE, "{}");
+}
+
+function loadLogs() {
+  return JSON.parse(fs.readFileSync(LOGS_FILE));
+}
+
+function saveLogs(data) {
+  fs.writeFileSync(LOGS_FILE, JSON.stringify(data, null, 2));
+}
 
 // ⚙️ إعدادات ذكية
 let CONCURRENT = 4;
@@ -39,45 +55,62 @@ client.once("ready", () => {
   console.log(`🤖 ${client.user.tag} جاهز`);
 });
 
-// 📦 Slash
-const command = new SlashCommandBuilder()
-  .setName("broadcast")
-  .setDescription("برودكاست متطور")
+// 📦 الأوامر
+const commands = [
 
-  .addStringOption(opt =>
-    opt.setName("message")
-      .setDescription("الرسالة")
-      .setRequired(true)
-  )
+  // 🚀 Broadcast
+  new SlashCommandBuilder()
+    .setName("broadcast")
+    .setDescription("برودكاست متطور")
 
-  .addStringOption(opt =>
-    opt.setName("type")
-      .setDescription("لمن")
-      .setRequired(true)
-      .addChoices(
-        { name: "الكل", value: "all" },
-        { name: "اونلاين", value: "online" },
-        { name: "رول", value: "role" }
-      )
-  )
+    .addStringOption(opt =>
+      opt.setName("message")
+        .setDescription("الرسالة")
+        .setRequired(true)
+    )
 
-  .addRoleOption(opt =>
-    opt.setName("role")
-      .setDescription("الرول")
-  )
+    .addStringOption(opt =>
+      opt.setName("type")
+        .setDescription("لمن")
+        .setRequired(true)
+        .addChoices(
+          { name: "الكل", value: "all" },
+          { name: "اونلاين", value: "online" },
+          { name: "رول", value: "role" }
+        )
+    )
 
-  .addBooleanOption(opt =>
-    opt.setName("mention")
-      .setDescription("إظهار المنشن")
-  );
+    .addRoleOption(opt =>
+      opt.setName("role")
+        .setDescription("الرول")
+    )
 
-// 🔥 تسجيل الأوامر
+    .addBooleanOption(opt =>
+      opt.setName("mention")
+        .setDescription("إظهار المنشن")
+    ),
+
+  // 📡 Set Log
+  new SlashCommandBuilder()
+    .setName("setlog")
+    .setDescription("تعيين روم اللوق")
+
+    .addChannelOption(opt =>
+      opt.setName("channel")
+        .setDescription("روم اللوق")
+        .setRequired(true)
+    )
+
+].map(c => c.toJSON());
+
+// 📦 تسجيل الأوامر
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 client.once("ready", async () => {
+
   await rest.put(
     Routes.applicationCommands(client.user.id),
-    { body: [command.toJSON()] }
+    { body: commands }
   );
 
   console.log("✅ Slash جاهز");
@@ -90,7 +123,12 @@ function calcETA(total) {
 }
 
 // 🔥 Worker
-async function sendWorker(members, message, mention, progress) {
+async function sendWorker(
+  members,
+  message,
+  mention,
+  progress
+) {
 
   let sent = 0;
   let fail = 0;
@@ -101,6 +139,7 @@ async function sendWorker(members, message, mention, progress) {
 
     await Promise.all(
       batch.map(async m => {
+
         try {
 
           let msg = message;
@@ -115,6 +154,7 @@ async function sendWorker(members, message, mention, progress) {
         } catch {
           fail++;
         }
+
       })
     );
 
@@ -146,8 +186,14 @@ async function broadcastAll(
   interaction
 ) {
 
+  // 📡 روم اللوق
+  const logs = loadLogs();
+
+  const logChannelId =
+    logs[interaction.guild.id];
+
   const logChannel =
-    interaction.guild.channels.cache.get(LOG_CHANNEL_ID);
+    interaction.guild.channels.cache.get(logChannelId);
 
   const progress = {
     done: 0,
@@ -156,7 +202,7 @@ async function broadcastAll(
 
   const startTime = Date.now();
 
-  // 📡 بدء
+  // 📢 Embed البداية
   const startEmbed = new EmbedBuilder()
     .setTitle("📡 بدء البرودكاست")
     .addFields(
@@ -171,10 +217,11 @@ async function broadcastAll(
     )
     .setColor("Blue");
 
-  if (logChannel)
+  if (logChannel) {
     await logChannel.send({
       embeds: [startEmbed]
     });
+  }
 
   // 🔥 إرسال
   const result = await sendWorker(
@@ -187,7 +234,7 @@ async function broadcastAll(
   const duration =
     ((Date.now() - startTime) / 1000).toFixed(1);
 
-  // ✅ نهاية
+  // ✅ النهاية
   const doneEmbed = new EmbedBuilder()
     .setTitle("✅ انتهى البرودكاست")
     .addFields(
@@ -206,10 +253,11 @@ async function broadcastAll(
     )
     .setColor("Green");
 
-  if (logChannel)
+  if (logChannel) {
     await logChannel.send({
       embeds: [doneEmbed]
     });
+  }
 
   return result;
 }
@@ -219,9 +267,38 @@ client.on("interactionCreate", async interaction => {
 
   if (!interaction.isChatInputCommand()) return;
 
+  // 📡 تعيين روم اللوق
+  if (interaction.commandName === "setlog") {
+
+    if (
+      !interaction.member.permissions.has(
+        PermissionsBitField.Flags.Administrator
+      )
+    ) {
+      return interaction.reply({
+        content: "❌ ما عندك صلاحية",
+        ephemeral: true
+      });
+    }
+
+    const channel =
+      interaction.options.getChannel("channel");
+
+    const logs = loadLogs();
+
+    logs[interaction.guild.id] = channel.id;
+
+    saveLogs(logs);
+
+    return interaction.reply({
+      content: `✅ تم تعيين ${channel}`,
+      ephemeral: true
+    });
+  }
+
+  // 🚀 Broadcast
   if (interaction.commandName === "broadcast") {
 
-    // 🔐 صلاحيات
     if (
       !interaction.member.permissions.has(
         PermissionsBitField.Flags.Administrator
@@ -249,13 +326,14 @@ client.on("interactionCreate", async interaction => {
       (await interaction.guild.members.fetch()).values()
     );
 
-    // 👥 فلترة
+    // 👥 اونلاين
     if (type === "online") {
       members = members.filter(
         m => m.presence?.status === "online"
       );
     }
 
+    // 🎭 رول
     if (type === "role") {
 
       if (!role) {
@@ -283,10 +361,12 @@ client.on("interactionCreate", async interaction => {
           name: "⏳ ETA",
           value: `${calcETA(members.length)} ثانية`
         }
-      );
+      )
+      .setColor("Blue");
 
     const row = new ActionRowBuilder()
       .addComponents(
+
         new ButtonBuilder()
           .setCustomId("yes")
           .setLabel("تأكيد")
@@ -296,6 +376,7 @@ client.on("interactionCreate", async interaction => {
           .setCustomId("no")
           .setLabel("إلغاء")
           .setStyle(ButtonStyle.Danger)
+
       );
 
     await interaction.reply({
@@ -353,7 +434,8 @@ client.on("interactionCreate", async interaction => {
               name: "❌ فشل",
               value: `${res.fail}`
             }
-          );
+          )
+          .setColor("Green");
 
         await interaction.followUp({
           embeds: [done]
@@ -361,6 +443,7 @@ client.on("interactionCreate", async interaction => {
 
         collector.stop();
       }
+
     });
   }
 });
