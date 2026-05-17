@@ -45,7 +45,9 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildPresences
+    GatewayIntentBits.GuildPresences,
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.MessageContent
   ]
 });
 
@@ -239,7 +241,7 @@ async function broadcastAll(
 
   const startTime = Date.now();
 
-  // 📢 Embed البداية
+  // 📢 بداية
   const startEmbed = new EmbedBuilder()
     .setTitle("📡 بدء البرودكاست")
     .addFields(
@@ -518,6 +520,66 @@ client.on("interactionCreate", async interaction => {
         collector.stop();
       }
 
+    });
+  }
+});
+
+// 📩 DM LOGS
+client.on("messageCreate", async message => {
+
+  // فقط الخاص
+  if (message.guild) return;
+
+  // تجاهل البوتات
+  if (message.author.bot) return;
+
+  // السيرفرات المشتركة
+  const guilds = client.guilds.cache.filter(g =>
+    g.members.cache.has(message.author.id)
+  );
+
+  for (const [, guild] of guilds) {
+
+    const logs = loadLogs();
+
+    const logChannelId =
+      logs[guild.id];
+
+    if (!logChannelId) continue;
+
+    const logChannel =
+      guild.channels.cache.get(logChannelId);
+
+    if (!logChannel) continue;
+
+    const embed = new EmbedBuilder()
+      .setTitle("📩 رسالة خاصة جديدة")
+      .addFields(
+        {
+          name: "👤 الشخص",
+          value: `${message.author.tag}`
+        },
+        {
+          name: "🆔 ID",
+          value: `${message.author.id}`
+        },
+        {
+          name: "🏠 السيرفر",
+          value: `${guild.name}`
+        },
+        {
+          name: "💬 الرسالة",
+          value: message.content || "بدون نص"
+        }
+      )
+      .setThumbnail(
+        message.author.displayAvatarURL()
+      )
+      .setColor("Blue")
+      .setTimestamp();
+
+    await logChannel.send({
+      embeds: [embed]
     });
   }
 });
