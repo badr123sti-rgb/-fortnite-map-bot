@@ -36,7 +36,7 @@ function saveLogs(data) {
   fs.writeFileSync(LOGS_FILE, JSON.stringify(data, null, 2));
 }
 
-// ⚙️ إعدادات ذكية
+// ⚙️ إعدادات
 let CONCURRENT = 4;
 let DELAY = 1000;
 
@@ -71,7 +71,7 @@ const commands = [
 
     .addStringOption(opt =>
       opt.setName("type")
-        .setDescription("لمن")
+        .setDescription("نوع الإرسال")
         .setRequired(true)
         .addChoices(
           { name: "الكل", value: "all" },
@@ -88,6 +88,21 @@ const commands = [
     .addBooleanOption(opt =>
       opt.setName("mention")
         .setDescription("إظهار المنشن")
+    )
+
+    .addBooleanOption(opt =>
+      opt.setName("embed")
+        .setDescription("إرسال Embed")
+    )
+
+    .addStringOption(opt =>
+      opt.setName("embed_title")
+        .setDescription("عنوان الامبيد")
+    )
+
+    .addUserOption(opt =>
+      opt.setName("user")
+        .setDescription("إرسال لشخص واحد")
     ),
 
   // 📡 Set Log
@@ -127,6 +142,8 @@ async function sendWorker(
   members,
   message,
   mention,
+  embedMode,
+  embedTitle,
   progress
 ) {
 
@@ -147,7 +164,23 @@ async function sendWorker(
           if (mention)
             msg = `${message}\n<@${m.id}>`;
 
-          await m.send(msg);
+          // 📦 Embed
+          if (embedMode) {
+
+            const embed = new EmbedBuilder()
+              .setTitle(embedTitle || "رسالة")
+              .setDescription(msg)
+              .setColor("Blue");
+
+            await m.send({
+              embeds: [embed]
+            });
+
+          } else {
+
+            await m.send(msg);
+
+          }
 
           sent++;
 
@@ -183,6 +216,8 @@ async function broadcastAll(
   members,
   message,
   mention,
+  embedMode,
+  embedTitle,
   interaction
 ) {
 
@@ -228,6 +263,8 @@ async function broadcastAll(
     members,
     message,
     mention,
+    embedMode,
+    embedTitle,
     progress
   );
 
@@ -322,9 +359,27 @@ client.on("interactionCreate", async interaction => {
     const mention =
       interaction.options.getBoolean("mention");
 
+    const embedMode =
+      interaction.options.getBoolean("embed");
+
+    const embedTitle =
+      interaction.options.getString("embed_title");
+
+    const targetUser =
+      interaction.options.getUser("user");
+
     let members = Array.from(
       (await interaction.guild.members.fetch()).values()
     );
+
+    // 👤 شخص واحد
+    if (targetUser) {
+
+      const member =
+        await interaction.guild.members.fetch(targetUser.id);
+
+      members = [member];
+    }
 
     // 👥 اونلاين
     if (type === "online") {
@@ -360,6 +415,10 @@ client.on("interactionCreate", async interaction => {
         {
           name: "⏳ ETA",
           value: `${calcETA(members.length)} ثانية`
+        },
+        {
+          name: "📦 Embed",
+          value: embedMode ? "نعم" : "لا"
         }
       )
       .setColor("Blue");
@@ -420,6 +479,8 @@ client.on("interactionCreate", async interaction => {
           members,
           message,
           mention,
+          embedMode,
+          embedTitle,
           interaction
         );
 
