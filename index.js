@@ -22,7 +22,7 @@ if (!process.env.TOKEN) {
 
 const TOKEN = process.env.TOKEN;
 
-// 👑 اونر
+// 👑 OWNER
 const OWNER_ID = "1085967235740336249";
 
 // 📁 logs
@@ -40,7 +40,7 @@ function saveLogs(data) {
   fs.writeFileSync(LOGS_FILE, JSON.stringify(data, null, 2));
 }
 
-// ⚙️ إعدادات
+// ⚙️ settings
 let CONCURRENT = 4;
 let DELAY = 1000;
 
@@ -56,16 +56,17 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
+// 🔑 Login
 client.login(TOKEN);
 
 client.once("ready", () => {
-  console.log(`🤖 ${client.user.tag} جاهز`);
+  console.log(`✅ ${client.user.tag} Online`);
 });
 
 // 📦 Commands
 const commands = [
 
-  // 🚀 Broadcast
+  // 🚀 broadcast
   new SlashCommandBuilder()
     .setName("broadcast")
     .setDescription("برودكاست متطور")
@@ -114,7 +115,7 @@ const commands = [
         .setDescription("عنوان الامبيد")
     ),
 
-  // 📡 Setlog
+  // 📡 setlog
   new SlashCommandBuilder()
     .setName("setlog")
     .setDescription("تعيين روم اللوق")
@@ -127,17 +128,23 @@ const commands = [
 
 ].map(cmd => cmd.toJSON());
 
-// 📦 Register
+// 📦 Register Commands
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 client.once("ready", async () => {
 
-  await rest.put(
-    Routes.applicationCommands(client.user.id),
-    { body: commands }
-  );
+  try {
 
-  console.log("✅ Slash جاهز");
+    await rest.put(
+      Routes.applicationCommands(client.user.id),
+      { body: commands }
+    );
+
+    console.log("✅ Slash Commands Ready");
+
+  } catch (err) {
+    console.log(err);
+  }
 });
 
 // 📊 ETA
@@ -146,7 +153,7 @@ function calcETA(total) {
   return Math.ceil(total / rate);
 }
 
-// 🔥 Worker
+// 🔥 Send Worker
 async function sendWorker(
   members,
   message,
@@ -187,7 +194,9 @@ async function sendWorker(
 
           } else {
 
-            await m.send(msg);
+            await m.send({
+              content: msg
+            });
 
           }
 
@@ -238,6 +247,7 @@ async function broadcastAll(
     total: members.length
   };
 
+  // 📡 Start Log
   const startEmbed = new EmbedBuilder()
     .setTitle("📡 بدء البرودكاست")
     .addFields(
@@ -267,6 +277,7 @@ async function broadcastAll(
     progress
   );
 
+  // ✅ End Log
   const doneEmbed = new EmbedBuilder()
     .setTitle("✅ انتهى البرودكاست")
     .addFields(
@@ -290,7 +301,7 @@ async function broadcastAll(
   return result;
 }
 
-// 🎮 Interaction
+// 🎮 Interactions
 client.on("interactionCreate", async interaction => {
 
   if (!interaction.isChatInputCommand()) return;
@@ -451,6 +462,7 @@ client.on("interactionCreate", async interaction => {
 
     collector.on("collect", async i => {
 
+      // ❌ Cancel
       if (i.customId === "no") {
 
         await i.update({
@@ -462,6 +474,7 @@ client.on("interactionCreate", async interaction => {
         collector.stop();
       }
 
+      // ✅ Confirm
       if (i.customId === "yes") {
 
         await i.update({
@@ -504,7 +517,7 @@ client.on("interactionCreate", async interaction => {
   }
 });
 
-// 📩 أي شخص يرسل للبوت بالخاص
+// 📩 DM SYSTEM
 client.on("messageCreate", async message => {
 
   // فقط خاص
@@ -513,10 +526,10 @@ client.on("messageCreate", async message => {
   // تجاهل البوتات
   if (message.author.bot) return;
 
-  // 👑 أوامر الأونر
+  // 👑 OWNER SEND SYSTEM
   if (message.author.id === OWNER_ID) {
 
-    // صيغة:
+    // الصيغة:
     // send ID الرسالة
 
     if (message.content.startsWith("send ")) {
@@ -533,28 +546,41 @@ client.on("messageCreate", async message => {
           args.slice(2).join(" ");
 
         if (!userId || !msg) {
-          return message.reply(
-            "❌ استخدم:\nsend USER_ID الرسالة"
-          );
+          return message.reply({
+            content:
+              "❌ استخدم:\nsend USER_ID الرسالة"
+          });
         }
 
+        // 🧠 Fetch User
         const user =
-          await client.users.fetch(userId);
+          await client.users.fetch(userId, {
+            force: true
+          });
 
-        await user.send(msg);
+        // 📨 Send
+        await user.send({
+          content: msg
+        });
 
-        return message.reply("✅ تم الإرسال");
+        // ✅ Success
+        return message.reply({
+          content: "✅ تم الإرسال"
+        });
 
       } catch (err) {
 
         console.log(err);
 
-        return message.reply("❌ فشل الإرسال");
+        // ❌ Official Error
+        return message.reply({
+          content: `❌ فشل الإرسال:\n${err.message}`
+        });
       }
     }
   }
 
-  // 📨 إرسال الرسائل لك
+  // 📥 أي شخص يرسل للبوت
   try {
 
     const owner =
@@ -594,6 +620,7 @@ client.on("messageCreate", async message => {
       .setColor("Blue")
       .setTimestamp();
 
+    // 📨 إرسال لك
     await owner.send({
       embeds: [embed]
     });
