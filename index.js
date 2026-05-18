@@ -8,12 +8,13 @@ const {
   PermissionsBitField,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
+  Partials
 } = require("discord.js");
 
 const fs = require("fs");
 
-// 🔐 ENV
+// 🔐 التوكن
 if (!process.env.TOKEN) {
   console.log("❌ TOKEN missing");
   process.exit(1);
@@ -21,10 +22,10 @@ if (!process.env.TOKEN) {
 
 const TOKEN = process.env.TOKEN;
 
-// 👑 ايدي حسابك
+// 👑 ايديك
 const OWNER_ID = "1085967235740336249";
 
-// 📁 ملف اللوق
+// 📁 ملف اللوقات
 const LOGS_FILE = "./logs.json";
 
 if (!fs.existsSync(LOGS_FILE)) {
@@ -39,7 +40,7 @@ function saveLogs(data) {
   fs.writeFileSync(LOGS_FILE, JSON.stringify(data, null, 2));
 }
 
-// ⚙️ إعدادات
+// ⚙️ إعدادات البرودكاست
 let CONCURRENT = 4;
 let DELAY = 1000;
 
@@ -51,7 +52,8 @@ const client = new Client({
     GatewayIntentBits.GuildPresences,
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent
-  ]
+  ],
+  partials: [Partials.Channel]
 });
 
 client.login(TOKEN);
@@ -63,7 +65,7 @@ client.once("ready", () => {
 // 📦 الأوامر
 const commands = [
 
-  // 🚀 Broadcast
+  // 🚀 برودكاست
   new SlashCommandBuilder()
     .setName("broadcast")
     .setDescription("برودكاست متطور")
@@ -99,7 +101,7 @@ const commands = [
 
     .addBooleanOption(opt =>
       opt.setName("mention")
-        .setDescription("إظهار المنشن")
+        .setDescription("منشن")
     )
 
     .addBooleanOption(opt =>
@@ -112,18 +114,18 @@ const commands = [
         .setDescription("عنوان الامبيد")
     ),
 
-  // 📡 Set Log
+  // 📡 تعيين روم اللوق
   new SlashCommandBuilder()
     .setName("setlog")
     .setDescription("تعيين روم اللوق")
 
     .addChannelOption(opt =>
       opt.setName("channel")
-        .setDescription("روم اللوق")
+        .setDescription("الروم")
         .setRequired(true)
     )
 
-].map(c => c.toJSON());
+].map(cmd => cmd.toJSON());
 
 // 📦 تسجيل الأوامر
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -144,7 +146,7 @@ function calcETA(total) {
   return Math.ceil(total / rate);
 }
 
-// 🔥 Worker
+// 🔥 إرسال
 async function sendWorker(
   members,
   message,
@@ -200,14 +202,10 @@ async function sendWorker(
 
     progress.done += batch.length;
 
-    const percent = (
-      (progress.done / progress.total) * 100
-    ).toFixed(1);
+    const percent =
+      ((progress.done / progress.total) * 100).toFixed(1);
 
     console.log(`📡 ${percent}%`);
-
-    if (fail > sent / 2)
-      DELAY += 500;
 
     await new Promise(r =>
       setTimeout(r, DELAY)
@@ -217,7 +215,7 @@ async function sendWorker(
   return { sent, fail };
 }
 
-// 🚀 Broadcast
+// 🚀 برودكاست
 async function broadcastAll(
   members,
   message,
@@ -239,8 +237,6 @@ async function broadcastAll(
     done: 0,
     total: members.length
   };
-
-  const startTime = Date.now();
 
   const startEmbed = new EmbedBuilder()
     .setTitle("📡 بدء البرودكاست")
@@ -271,9 +267,6 @@ async function broadcastAll(
     progress
   );
 
-  const duration =
-    ((Date.now() - startTime) / 1000).toFixed(1);
-
   const doneEmbed = new EmbedBuilder()
     .setTitle("✅ انتهى البرودكاست")
     .addFields(
@@ -284,10 +277,6 @@ async function broadcastAll(
       {
         name: "❌ فشل",
         value: `${result.fail}`
-      },
-      {
-        name: "⏱️ الوقت",
-        value: `${duration}s`
       }
     )
     .setColor("Green");
@@ -306,7 +295,7 @@ client.on("interactionCreate", async interaction => {
 
   if (!interaction.isChatInputCommand()) return;
 
-  // 📡 Set Log
+  // 📡 setlog
   if (interaction.commandName === "setlog") {
 
     if (
@@ -335,7 +324,7 @@ client.on("interactionCreate", async interaction => {
     });
   }
 
-  // 🚀 Broadcast
+  // 🚀 broadcast
   if (interaction.commandName === "broadcast") {
 
     if (
@@ -423,10 +412,6 @@ client.on("interactionCreate", async interaction => {
         {
           name: "👥 العدد",
           value: `${members.length}`
-        },
-        {
-          name: "⏳ ETA",
-          value: `${calcETA(members.length)} ثانية`
         },
         {
           name: "📦 Embed",
@@ -519,7 +504,7 @@ client.on("interactionCreate", async interaction => {
   }
 });
 
-// 📩 DM LOGS TO OWNER
+// 📩 أي رسالة خاص للبوت تنرسل لك بالخاص
 client.on("messageCreate", async message => {
 
   // فقط الخاص
@@ -538,13 +523,11 @@ client.on("messageCreate", async message => {
       g.members.cache.has(message.author.id)
     );
 
-    let guildNames = guilds.map(g => g.name).join(", ");
-
-    if (!guildNames)
-      guildNames = "غير معروف";
+    const guildNames =
+      guilds.map(g => g.name).join(", ") || "غير معروف";
 
     const embed = new EmbedBuilder()
-      .setTitle("📩 رسالة جديدة بالخاص")
+      .setTitle("📩 رسالة جديدة للبوت")
       .addFields(
         {
           name: "👤 الشخص",
@@ -569,11 +552,12 @@ client.on("messageCreate", async message => {
       .setColor("Blue")
       .setTimestamp();
 
+    // 📨 إرسال لك بالخاص
     await owner.send({
       embeds: [embed]
     });
 
   } catch (err) {
-    console.log(err);
+    console.log("DM ERROR:", err);
   }
 });
