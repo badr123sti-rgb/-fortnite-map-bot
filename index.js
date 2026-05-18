@@ -121,7 +121,7 @@ client.once("ready", async () => {
 });
 
 function calcETA(total) {
-  const rate = CONCURRENT / (DELAY / 1000);
+  const rate = CONCURRENT / (DELAY / 10);
   return Math.ceil(total / rate);
 }
 
