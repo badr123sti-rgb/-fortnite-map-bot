@@ -35,8 +35,8 @@ function saveLogs(data) {
   fs.writeFileSync(LOGS_FILE, JSON.stringify(data, null, 2));
 }
 
-let CONCURRENT = 1;
-let DELAY = 10;
+let CONCURRENT = 4;
+let DELAY = 1000;
 
 const client = new Client({
   intents: [
@@ -121,7 +121,7 @@ client.once("ready", async () => {
 });
 
 function calcETA(total) {
-  const rate = CONCURRENT / (DELAY / 10);
+  const rate = CONCURRENT / (DELAY / 1000);
   return Math.ceil(total / rate);
 }
 
