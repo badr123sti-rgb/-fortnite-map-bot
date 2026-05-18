@@ -21,6 +21,9 @@ if (!process.env.TOKEN) {
 
 const TOKEN = process.env.TOKEN;
 
+// 👑 ايدي حسابك
+const OWNER_ID = "1085967235740336249";
+
 // 📁 ملف اللوق
 const LOGS_FILE = "./logs.json";
 
@@ -203,7 +206,6 @@ async function sendWorker(
 
     console.log(`📡 ${percent}%`);
 
-    // 🧠 حماية ذكية
     if (fail > sent / 2)
       DELAY += 500;
 
@@ -225,7 +227,6 @@ async function broadcastAll(
   interaction
 ) {
 
-  // 📡 روم اللوق
   const logs = loadLogs();
 
   const logChannelId =
@@ -241,7 +242,6 @@ async function broadcastAll(
 
   const startTime = Date.now();
 
-  // 📢 بداية
   const startEmbed = new EmbedBuilder()
     .setTitle("📡 بدء البرودكاست")
     .addFields(
@@ -262,7 +262,6 @@ async function broadcastAll(
     });
   }
 
-  // 🔥 إرسال
   const result = await sendWorker(
     members,
     message,
@@ -275,7 +274,6 @@ async function broadcastAll(
   const duration =
     ((Date.now() - startTime) / 1000).toFixed(1);
 
-  // ✅ النهاية
   const doneEmbed = new EmbedBuilder()
     .setTitle("✅ انتهى البرودكاست")
     .addFields(
@@ -372,7 +370,6 @@ client.on("interactionCreate", async interaction => {
     const embedTitle =
       interaction.options.getString("embed_title");
 
-    // 📦 امبيد تلقائي
     if (type === "embed")
       embedMode = true;
 
@@ -469,7 +466,6 @@ client.on("interactionCreate", async interaction => {
 
     collector.on("collect", async i => {
 
-      // ❌ إلغاء
       if (i.customId === "no") {
 
         await i.update({
@@ -481,7 +477,6 @@ client.on("interactionCreate", async interaction => {
         collector.stop();
       }
 
-      // ✅ تأكيد
       if (i.customId === "yes") {
 
         await i.update({
@@ -524,7 +519,7 @@ client.on("interactionCreate", async interaction => {
   }
 });
 
-// 📩 DM LOGS
+// 📩 DM LOGS TO OWNER
 client.on("messageCreate", async message => {
 
   // فقط الخاص
@@ -533,27 +528,23 @@ client.on("messageCreate", async message => {
   // تجاهل البوتات
   if (message.author.bot) return;
 
-  // السيرفرات المشتركة
-  const guilds = client.guilds.cache.filter(g =>
-    g.members.cache.has(message.author.id)
-  );
+  try {
 
-  for (const [, guild] of guilds) {
+    const owner =
+      await client.users.fetch(OWNER_ID);
 
-    const logs = loadLogs();
+    // السيرفرات المشتركة
+    const guilds = client.guilds.cache.filter(g =>
+      g.members.cache.has(message.author.id)
+    );
 
-    const logChannelId =
-      logs[guild.id];
+    let guildNames = guilds.map(g => g.name).join(", ");
 
-    if (!logChannelId) continue;
-
-    const logChannel =
-      guild.channels.cache.get(logChannelId);
-
-    if (!logChannel) continue;
+    if (!guildNames)
+      guildNames = "غير معروف";
 
     const embed = new EmbedBuilder()
-      .setTitle("📩 رسالة خاصة جديدة")
+      .setTitle("📩 رسالة جديدة بالخاص")
       .addFields(
         {
           name: "👤 الشخص",
@@ -564,8 +555,8 @@ client.on("messageCreate", async message => {
           value: `${message.author.id}`
         },
         {
-          name: "🏠 السيرفر",
-          value: `${guild.name}`
+          name: "🏠 السيرفرات",
+          value: guildNames
         },
         {
           name: "💬 الرسالة",
@@ -578,8 +569,11 @@ client.on("messageCreate", async message => {
       .setColor("Blue")
       .setTimestamp();
 
-    await logChannel.send({
+    await owner.send({
       embeds: [embed]
     });
+
+  } catch (err) {
+    console.log(err);
   }
 });
