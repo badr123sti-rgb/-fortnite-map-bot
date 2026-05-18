@@ -35,8 +35,8 @@ function saveLogs(data) {
   fs.writeFileSync(LOGS_FILE, JSON.stringify(data, null, 2));
 }
 
-let CONCURRENT = 4;
-let DELAY = 1000;
+let CONCURRENT = 1;
+let DELAY = 10;
 
 const client = new Client({
   intents: [
