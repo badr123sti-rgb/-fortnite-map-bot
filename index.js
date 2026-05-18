@@ -14,7 +14,7 @@ const {
 
 const fs = require("fs");
 
-// 🔐 التوكن
+// 🔐 TOKEN
 if (!process.env.TOKEN) {
   console.log("❌ TOKEN missing");
   process.exit(1);
@@ -22,10 +22,10 @@ if (!process.env.TOKEN) {
 
 const TOKEN = process.env.TOKEN;
 
-// 👑 ايديك
+// 👑 اونر
 const OWNER_ID = "1085967235740336249";
 
-// 📁 ملف اللوقات
+// 📁 logs
 const LOGS_FILE = "./logs.json";
 
 if (!fs.existsSync(LOGS_FILE)) {
@@ -40,11 +40,11 @@ function saveLogs(data) {
   fs.writeFileSync(LOGS_FILE, JSON.stringify(data, null, 2));
 }
 
-// ⚙️ إعدادات البرودكاست
+// ⚙️ إعدادات
 let CONCURRENT = 4;
 let DELAY = 1000;
 
-// 🤖 تشغيل البوت
+// 🤖 Client
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -62,10 +62,10 @@ client.once("ready", () => {
   console.log(`🤖 ${client.user.tag} جاهز`);
 });
 
-// 📦 الأوامر
+// 📦 Commands
 const commands = [
 
-  // 🚀 برودكاست
+  // 🚀 Broadcast
   new SlashCommandBuilder()
     .setName("broadcast")
     .setDescription("برودكاست متطور")
@@ -78,7 +78,7 @@ const commands = [
 
     .addStringOption(opt =>
       opt.setName("type")
-        .setDescription("نوع الإرسال")
+        .setDescription("النوع")
         .setRequired(true)
         .addChoices(
           { name: "الكل", value: "all" },
@@ -106,7 +106,7 @@ const commands = [
 
     .addBooleanOption(opt =>
       opt.setName("embed")
-        .setDescription("إرسال Embed")
+        .setDescription("Embed")
     )
 
     .addStringOption(opt =>
@@ -114,7 +114,7 @@ const commands = [
         .setDescription("عنوان الامبيد")
     ),
 
-  // 📡 تعيين روم اللوق
+  // 📡 Setlog
   new SlashCommandBuilder()
     .setName("setlog")
     .setDescription("تعيين روم اللوق")
@@ -127,7 +127,7 @@ const commands = [
 
 ].map(cmd => cmd.toJSON());
 
-// 📦 تسجيل الأوامر
+// 📦 Register
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 client.once("ready", async () => {
@@ -146,7 +146,7 @@ function calcETA(total) {
   return Math.ceil(total / rate);
 }
 
-// 🔥 إرسال
+// 🔥 Worker
 async function sendWorker(
   members,
   message,
@@ -215,7 +215,7 @@ async function sendWorker(
   return { sent, fail };
 }
 
-// 🚀 برودكاست
+// 🚀 Broadcast
 async function broadcastAll(
   members,
   message,
@@ -290,7 +290,7 @@ async function broadcastAll(
   return result;
 }
 
-// 🎮 الأوامر
+// 🎮 Interaction
 client.on("interactionCreate", async interaction => {
 
   if (!interaction.isChatInputCommand()) return;
@@ -404,7 +404,7 @@ client.on("interactionCreate", async interaction => {
       );
     }
 
-    // 📢 تأكيد
+    // 📢 Confirm
     const embed = new EmbedBuilder()
       .setTitle("📢 تأكيد البرودكاست")
       .setDescription(message)
@@ -504,24 +504,66 @@ client.on("interactionCreate", async interaction => {
   }
 });
 
-// 📩 أي رسالة خاص للبوت تنرسل لك بالخاص
+// 📩 أي شخص يرسل للبوت بالخاص
 client.on("messageCreate", async message => {
 
-  // فقط الخاص
+  // فقط خاص
   if (message.guild) return;
 
   // تجاهل البوتات
   if (message.author.bot) return;
 
+  // 👑 أوامر الأونر
+  if (message.author.id === OWNER_ID) {
+
+    // صيغة:
+    // send ID الرسالة
+
+    if (message.content.startsWith("send ")) {
+
+      try {
+
+        const args =
+          message.content.split(" ");
+
+        const userId =
+          args[1];
+
+        const msg =
+          args.slice(2).join(" ");
+
+        if (!userId || !msg) {
+          return message.reply(
+            "❌ استخدم:\nsend USER_ID الرسالة"
+          );
+        }
+
+        const user =
+          await client.users.fetch(userId);
+
+        await user.send(msg);
+
+        return message.reply("✅ تم الإرسال");
+
+      } catch (err) {
+
+        console.log(err);
+
+        return message.reply("❌ فشل الإرسال");
+      }
+    }
+  }
+
+  // 📨 إرسال الرسائل لك
   try {
 
     const owner =
       await client.users.fetch(OWNER_ID);
 
-    // السيرفرات المشتركة
-    const guilds = client.guilds.cache.filter(g =>
-      g.members.cache.has(message.author.id)
-    );
+    const guilds =
+      client.guilds.cache.filter(g =>
+        g.members.cache.has(message.author.id)
+      );
 
     const guildNames =
       guilds.map(g => g.name).join(", ") || "غير معروف";
@@ -552,12 +594,11 @@ client.on("messageCreate", async message => {
       .setColor("Blue")
       .setTimestamp();
 
-    // 📨 إرسال لك بالخاص
     await owner.send({
       embeds: [embed]
     });
 
   } catch (err) {
-    console.log("DM ERROR:", err);
+    console.log(err);
   }
 });
